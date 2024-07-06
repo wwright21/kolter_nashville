@@ -152,16 +152,17 @@ st.sidebar.markdown(
     unsafe_allow_html=True
     )
 
-@st.cache_data
+# @st.cache_data
 def load_geometry():
     # Load the geometry data
     return gpd.read_file('Data/tracts_simp.gpkg')
 
-@st.cache_data
+# @st.cache_data
 def load_attribute(attribute_file):
     # Load an attribute data
     return pd.read_csv(attribute_file, dtype={'GEOID': 'str'})
 
+# CHOROPLETH MAP ---------------------------------------------------------------------
 # Load the geometry data once
 geometry_gdf = load_geometry()
 
@@ -245,8 +246,15 @@ attribute_df['GEOID'] = attribute_df['GEOID'].apply(split_and_format)
 merged_gdf = geometry_gdf.merge(attribute_df, on='GEOID').set_index('GEOID')
 merged_gdf['county_name'] = merged_gdf['FIPS'].map(county_list)
 
+# Initialize session state if not already done
+if 'map_center' not in st.session_state:
+  st.session_state['map_center'] = [36.00734326974716, -86.75460358901837]
+if 'zoom_level' not in st.session_state:
+  st.session_state['zoom_level'] = 7.2
+
 # define mapping parameters
-center = [36.00734326974716, -86.75460358901837]
+map_starting_center = st.session_state['map_center']  
+map_starting_zoom = st.session_state['zoom_level']
 
 # define the main mapping figure
 fig = px.choropleth_mapbox(
@@ -259,22 +267,24 @@ fig = px.choropleth_mapbox(
     labels={
         'tooltip': attribute_columnNames[attribute]
     },
-    center={"lat": center[0], "lon": center[1]},
+    center={"lat": map_starting_center[0], "lon": map_starting_center[1]},
     mapbox_style=base_map_dict[base_map],
-    zoom=7.2,
+    zoom=map_starting_zoom,
     opacity=opacity,
-    height=600
+    height=650
     )
 
 # customize the tooltip for the choropleth map
 fig.update_traces(
-    hovertemplate = "<b>%{customdata[1]} County: </b>%{customdata[0]}"
+    hovertemplate = "<b>%{customdata[1]} County: </b>%{customdata[0]}",
+    marker_line_width=0.2
 )
 
 fig.update_layout(
     margin=dict(l=10, r=10, t=20, b=1),
 )
 
+# style and customize the map
 fig.update_coloraxes(
     colorbar_x=0.5,
     colorbar_y=0,
@@ -286,7 +296,6 @@ fig.update_coloraxes(
     colorbar_title_text=attribute_choroLegend[attribute],
     colorbar_tickangle=90
     )
-
 
 # Load the county outline
 selected_county = st.session_state.get('selected_county')
@@ -334,7 +343,7 @@ col1.plotly_chart(
     use_container_width=True
     )
 
-# read building permit data
+# BUILDING PERMITS SECTION ---------------------------------------------------------
 building_permits = pd.read_csv(
     'Data/building_permits.csv',
     dtype={
@@ -345,7 +354,7 @@ building_permits = pd.read_csv(
 county_fips = str(county_outline.index[0])
 building_permits = building_permits[building_permits['FIPS'] == county_fips]
 
-
+# spacer
 col2.write(" ")
 
 # Create the line chart
@@ -357,7 +366,7 @@ fig_permits = px.line(
     labels={'Permits': 'Total Permits', 'Series': 'Permit Type'},
     custom_data=['month_year', 'Series', 'Permits'],
     title='Building Permits by Month',
-    height=310
+    height=230
 )
 
 fig_permits.update_traces(
@@ -386,7 +395,7 @@ col2.plotly_chart(
 permit_12mo_total = building_permits[(building_permits['Series']=='Single-Family Units') & (building_permits['date']>='2023-06-01')]['Permits'].sum()
 
 KPI_margin_top = 2
-KPI_margin_bottom = 10
+KPI_margin_bottom = 0
 KPI_label_font_size = 12
 KPI_value_font_size = 15
 
