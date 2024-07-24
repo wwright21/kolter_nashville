@@ -3,7 +3,7 @@ import geopandas as gpd
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from streamlit_js_eval import streamlit_js_eval
+# from streamlit_js_eval import streamlit_js_eval
 
 # set year variables to be used in map layer
 current_year = 2024
@@ -242,20 +242,20 @@ attribute_df['GEOID'] = attribute_df['GEOID'].apply(split_and_format)
 merged_gdf = geometry_gdf.merge(attribute_df, on='GEOID').set_index('GEOID')
 merged_gdf['county_name'] = merged_gdf['FIPS'].map(county_list)
 
-# get the screen height to set the heights of the map and line charts
-screen_height = streamlit_js_eval(js_expressions='screen.height', key = 'SCR')
+# # get the screen height to set the heights of the map and line charts
+# screen_height = streamlit_js_eval(js_expressions='screen.height', key = 'SCR')
 
-# Set default heights in case screen_height is None
-default_map_height = 630
-default_line_height = 220
+# # Set default heights in case screen_height is None
+# default_map_height = 630
+# default_line_height = 220
 
-# Calculate heights if screen_height is not None
-if screen_height is not None:
-    map_height = float(screen_height * 0.68)
-    line_height = float(screen_height * 0.20)
-else:
-    map_height = default_map_height
-    line_height = default_line_height
+# # Calculate heights if screen_height is not None
+# if screen_height is not None:
+#     map_height = float(screen_height * 0.68)
+#     line_height = float(screen_height * 0.20)
+# else:
+#     map_height = default_map_height
+#     line_height = default_line_height
 
 # define the main mapping figure
 fig = px.choropleth_mapbox(
@@ -272,7 +272,8 @@ fig = px.choropleth_mapbox(
     # mapbox_style='open-street-map',
     zoom=7.5,
     opacity=0.7,
-    height=map_height
+    # height=map_height
+    height=700
     )
 
 # customize the tooltip for the choropleth map
@@ -335,6 +336,8 @@ col1, col2 = st.columns([0.8,1])
 
 
 # draw map
+col1.write(" ")
+col1.write(" ")
 col1.plotly_chart(
     fig, 
     config=config,
@@ -374,7 +377,8 @@ fig_permits = px.line(
        },
     custom_data=['month_year', 'permit_ratio', 'Permits', 'county_name'],
     title='Single-Family Permits per 10,000 persons',
-    height=line_height,
+    # height=line_height,
+    height=220,
     color_discrete_map={
        county: county_lineColor,
        'Metro': metro_lineColor
@@ -414,6 +418,8 @@ for trace in fig_permits.data:
         trace.hoverlabel.font.color = tooltip_color
 
 # draw building permit line chart
+col2.write(" ")
+col2.write(" ")
 col2.plotly_chart(
     fig_permits, 
     config=config,
@@ -485,7 +491,8 @@ fig_migration = px.line(
     color='county_name',
     custom_data=['year', 'county_name', migration_switch[migration_variable][0]],
     title=f'Net Migration Trends: {migration_switch[migration_variable][1]}',
-    height=line_height,
+    # height=line_height,
+    height=220,
     color_discrete_map={
        county: '#000000'
        }
