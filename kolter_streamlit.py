@@ -3,6 +3,7 @@ import geopandas as gpd
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from streamlit_js_eval import streamlit_js_eval
 
 # set year variables to be used in map layer
 current_year = 2024
@@ -15,6 +16,16 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded" # 'collapsed' or 'expanded'
 )
+
+# set Kolter logo
+col1, col2, col3 = st.sidebar.columns([0.85,1,1])
+col2.image('Data/kolter2.png', width=100)
+
+# sidebar separator
+st.sidebar.markdown(
+    "<p style='text-align:center;color:#000000;'>---------------</p>", 
+    unsafe_allow_html=True
+    )
 
 # county select helper text
 st.sidebar.markdown(
@@ -62,7 +73,7 @@ if 'county_dropdown' in st.session_state:  # Check if this is the first run
 # set the dashboard subtitle now that the county has been selected
 title_font_size = 30
 title_margin_top = 25
-title_margin_bottom = -20
+title_margin_bottom = -50
 
 st.markdown(
     f"""
@@ -110,47 +121,32 @@ attribute = st.sidebar.selectbox(
     ]
 )
 
-# opacity slider helper text
-st.sidebar.write(" ")
-st.sidebar.write(" ")
-st.sidebar.markdown(
-    "<p style='text-align:center;color:#000000;'>Layer opacity:</p>", unsafe_allow_html=True)
-
-# set choropleth opacity
-opacity = st.sidebar.slider(
-    label='label',
-    label_visibility='collapsed',
-    min_value=0.2,
-    max_value=1.0,
-    value=0.6,
-    step=0.1
-)
-
-# Basemap helper text
-st.sidebar.write(" ")
-st.sidebar.markdown(
-    "<p style='text-align:center;color:#000000;'>Basemap:</p>", unsafe_allow_html=True)
-
-# set basemap
-base_map = st.sidebar.radio(
-    label='label',
-    label_visibility='collapsed',
-    options=['Light', 'Dark'],
-    index=0,
-    horizontal=True,
-)
-
-# convert basemap to cartoDB basemap
-base_map_dict = {
-    'Light': 'carto-positron',
-    'Dark': 'carto-darkmatter'
-}
-
 # sidebar separator
 st.sidebar.markdown(
     "<p style='text-align:center;color:#000000;'>---------------</p>", 
     unsafe_allow_html=True
     )
+
+# Migration variable helper text
+st.sidebar.markdown(
+    "<p style='text-align:center;color:#000000;'>View migration data by:</p>", unsafe_allow_html=True)
+
+# migration chart selector
+migration_variable = st.sidebar.selectbox(
+   label='label',
+   label_visibility='collapsed',
+   options=[
+        'Flow of persons',
+        'Flow of dollars', 
+    ],
+    index=0,
+)
+
+# migration switcher
+migration_switch = {
+   'Flow of persons': ['people_net', 'People', '~s', ''],
+    'Flow of dollars': ['agi_net', 'Adjusted Gross Income', '$~s', '$']
+}
 
 # @st.cache_data
 def load_geometry():
@@ -246,15 +242,20 @@ attribute_df['GEOID'] = attribute_df['GEOID'].apply(split_and_format)
 merged_gdf = geometry_gdf.merge(attribute_df, on='GEOID').set_index('GEOID')
 merged_gdf['county_name'] = merged_gdf['FIPS'].map(county_list)
 
-# Initialize session state if not already done
-if 'map_center' not in st.session_state:
-  st.session_state['map_center'] = [36.00734326974716, -86.75460358901837]
-if 'zoom_level' not in st.session_state:
-  st.session_state['zoom_level'] = 7.2
+# get the screen height to set the heights of the map and line charts
+screen_height = streamlit_js_eval(js_expressions='screen.height', key = 'SCR')
 
-# define mapping parameters
-map_starting_center = st.session_state['map_center']  
-map_starting_zoom = st.session_state['zoom_level']
+# Set default heights in case screen_height is None
+default_map_height = 630
+default_line_height = 220
+
+# Calculate heights if screen_height is not None
+if screen_height is not None:
+    map_height = float(screen_height * 0.68)
+    line_height = float(screen_height * 0.20)
+else:
+    map_height = default_map_height
+    line_height = default_line_height
 
 # define the main mapping figure
 fig = px.choropleth_mapbox(
@@ -267,21 +268,24 @@ fig = px.choropleth_mapbox(
     labels={
         'tooltip': attribute_columnNames[attribute]
     },
-    center={"lat": map_starting_center[0], "lon": map_starting_center[1]},
-    mapbox_style=base_map_dict[base_map],
-    zoom=map_starting_zoom,
-    opacity=opacity,
-    height=650
+    center={"lat": 36.00734326974716, "lon": -86.75460358901837},
+    # mapbox_style='open-street-map',
+    zoom=7.5,
+    opacity=0.7,
+    height=map_height
     )
 
 # customize the tooltip for the choropleth map
 fig.update_traces(
     hovertemplate = "<b>%{customdata[1]} County: </b>%{customdata[0]}",
-    marker_line_width=0.2
+    marker_line_width=0.2,
+    hoverlabel=dict(font=dict(color='#000000'))  
 )
-
+# set map margin
 fig.update_layout(
     margin=dict(l=10, r=10, t=20, b=1),
+    mapbox_style="streets", 
+    mapbox_accesstoken='pk.eyJ1Ijoid3dyaWdodDIxIiwiYSI6ImNsNW1qeDRpMDBjMHozY2tjdmdlb2RxcngifQ.od9AXX3w_r6td8tM96W_gA'
 )
 
 # style and customize the map
@@ -308,12 +312,6 @@ coord_df = county_outline['geometry'].get_coordinates()
 lon = coord_df['x'].values
 lat = coord_df['y'].values
 
-# define county outline based on basemap
-base_map_flip = {
-    'Light': 'black',
-    'Dark': 'white'
-}
-
 # create the county outline
 scatter_trace = go.Scattermapbox(
     mode='lines',
@@ -321,7 +319,7 @@ scatter_trace = go.Scattermapbox(
     lat=lat,
     line=dict(
         width=4, 
-        color=base_map_flip[base_map]
+        color='black'
         ),
     hoverinfo='none'  
 )
@@ -334,6 +332,7 @@ config = {'displayModeBar': False}
 
 # define columns
 col1, col2 = st.columns([0.8,1])
+
 
 # draw map
 col1.plotly_chart(
@@ -350,38 +349,69 @@ building_permits = pd.read_csv(
         'FIPS':'str'
     })
 
-# filter permit data by county that is selected
+# filter permit data by county that is selected; keep the metro series for comparison
 county_fips = str(county_outline.index[0])
-building_permits = building_permits[building_permits['FIPS'] == county_fips]
+building_permits = building_permits[(building_permits['FIPS'] == county_fips) | (building_permits['county_name']=='Metro')]
 
-# spacer
+# vertical spacer - bumps the chart down justa hair
 col2.write(" ")
 
-# Create the line chart
+# set building permit line chart colors
+county_lineColor = '#000000'
+metro_lineColor = '#4292c6'
+tooltip_color = '#FFFFFF'
+
+# create line chart object
 fig_permits = px.line(
     building_permits,
     x='date',
-    y='Permits',
-    color='Series',
-    labels={'Permits': 'Total Permits', 'Series': 'Permit Type'},
-    custom_data=['month_year', 'Series', 'Permits'],
-    title='Building Permits by Month',
-    height=230
+    y='permit_ratio',
+    color='county_name',
+    labels={
+       'Permits': 'Total SF Permits', 
+       'permit_ratio': 'Permits per 10,000 persons',
+       'county_name': 'County'
+       },
+    custom_data=['month_year', 'permit_ratio', 'Permits', 'county_name'],
+    title='Single-Family Permits per 10,000 persons',
+    height=line_height,
+    color_discrete_map={
+       county: county_lineColor,
+       'Metro': metro_lineColor
+    }
 )
 
+# configure the tooltip
 fig_permits.update_traces(
     mode="markers+lines", 
     hovertemplate=
-        "<b>%{customdata[0]}</b><br>"+
-        "%{customdata[2]:,}"+
-        "<extra></extra>"
+        "<b>%{customdata[0]} - %{customdata[3]}</b><br>"+
+        "Per 10,000: %{customdata[1]:.2f}<br>"+
+        "Total / Raw: %{customdata[2]:,}<br>"+
+        "<extra></extra>",
+    line=dict(width=2.5)
 )
 
-fig_permits.update_xaxes(title=None)
-fig_permits.update_yaxes(tickformat=',',title=None)
+# axis tuning
+fig_permits.update_xaxes(
+   title=None,
+   tickmode="linear", 
+   dtick="M3"
+   )
+fig_permits.update_yaxes(title=None)
 fig_permits.update_layout(
     margin=dict(l=10, r=10, t=50, b=1),
+    title=dict(font=dict(size=18)),
 )
+
+# Loop through each trace and set hoverlabel colors
+for trace in fig_permits.data:
+    if trace.name == county:
+        trace.hoverlabel.bgcolor = county_lineColor
+        trace.hoverlabel.font.color = tooltip_color 
+    elif trace.name == 'Metro':
+        trace.hoverlabel.bgcolor = metro_lineColor
+        trace.hoverlabel.font.color = tooltip_color
 
 # draw building permit line chart
 col2.plotly_chart(
@@ -392,24 +422,335 @@ col2.plotly_chart(
     )
 
 # create KPI variables
-permit_12mo_total = building_permits[(building_permits['Series']=='Single-Family Units') & (building_permits['date']>='2023-06-01')]['Permits'].sum()
+kpi_df = pd.read_csv('Data/building_permits_KPI.csv')
+metro_12mo_total = kpi_df['total_permits'].sum()
+county_12mo_total = kpi_df[kpi_df['county_name']==county]['total_permits'].sum()
 
 KPI_margin_top = 2
-KPI_margin_bottom = 0
-KPI_label_font_size = 12
-KPI_value_font_size = 15
+KPI_margin_bottom = -30
+KPI_label_font_size = 13
+KPI_value_font_size = 16
 
-col2.markdown(
+with col2:
+   subcol1, subcol2, subcol3 = st.columns(3)
+
+# subcolumn with the county total
+subcol1.markdown(
+   f"""
+    <div style='margin-top: {KPI_margin_top}px; margin-bottom: {KPI_margin_bottom}px;'>
+        <span style='font-size: {KPI_label_font_size}px; font-weight: 200;'>12-Month <b>County</b> S.F. Total:</span><br>
+        <span style='font-size: {KPI_value_font_size}px; font-weight: 800;'>{county_12mo_total:,.0f}</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+# subcolumn with the Metro total
+subcol2.markdown(
     f"""
     <div style='margin-top: {KPI_margin_top}px; margin-bottom: {KPI_margin_bottom}px;'>
-        <span style='font-size: {KPI_label_font_size}px; font-weight: 200;'>Total 12-month SF Permits:</span><br>
-        <span style='font-size: {KPI_value_font_size}px; font-weight: 800;'>{permit_12mo_total:,.0f}</span>
+        <span style='font-size: {KPI_label_font_size}px; font-weight: 200;'>12-Month <b>Metro</b> S.F. Total:</span><br>
+        <span style='font-size: {KPI_value_font_size}px; font-weight: 800;'>{metro_12mo_total:,.0f}</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+# subcolumn with the ratio of county total to metro total
+subcol3.markdown(
+   f"""
+    <div style='margin-top: {KPI_margin_top}px; margin-bottom: {KPI_margin_bottom}px;'>
+        <span style='font-size: {KPI_label_font_size}px; font-weight: 200;'>{county} County Metro Contribution:</span><br>
+        <span style='font-size: {KPI_value_font_size}px; font-weight: 800;'>{county_12mo_total/metro_12mo_total*100:.1f}%</span>
     </div>
     """,
     unsafe_allow_html=True
 )
 
 col2.divider()
+
+# IRS Migration section -------------------------------------------------------
+df_irs = pd.read_csv('Data/netflow_MetroTotal.csv', dtype={
+   'year': 'str',
+    'FIPS': 'str'
+})
+
+df_county = df_irs[df_irs['FIPS']==county_fips]
+
+# Create the line chart
+fig_migration = px.line(
+    df_county,
+    x='year',
+    y=migration_switch[migration_variable][0],
+    color='county_name',
+    custom_data=['year', 'county_name', migration_switch[migration_variable][0]],
+    title=f'Net Migration Trends: {migration_switch[migration_variable][1]}',
+    height=line_height,
+    color_discrete_map={
+       county: '#000000'
+       }
+    )
+
+hovertemplate_persons =  "<b>%{customdata[0]} - %{customdata[1]} County</b><br>"+"Net migration: %{customdata[2]:,}"+"<extra></extra>"
+
+hovertemplate_AGI =  "<b>%{customdata[0]} - %{customdata[1]} County</b><br>"+"Net migration: $%{customdata[2]:,}"+"<extra></extra>"
+
+
+# configure the tooltip
+if migration_variable == 'Flow of persons':
+    fig_migration.update_traces(
+        mode="markers+lines", 
+        hovertemplate=hovertemplate_persons,
+        hoverlabel=dict(
+            bgcolor='#000000',
+            font=dict(
+                color='#FFFFFF'
+            )),
+        line=dict(width=2.5)
+    )
+else:
+    fig_migration.update_traces(
+        mode="markers+lines", 
+        hovertemplate=hovertemplate_AGI,
+        hoverlabel=dict(
+            bgcolor='#000000',
+            font=dict(
+                color='#FFFFFF'
+            )),
+        line=dict(width=2.5)
+    )
+
+# axis tuning
+fig_migration.update_xaxes(
+   title=None,
+   tickmode="linear", 
+   dtick="M3"
+   )
+fig_migration.update_yaxes(
+    title=None,
+    tickformat=migration_switch[migration_variable][2]  
+    )
+fig_migration.update_layout(
+    margin=dict(l=10, r=10, t=50, b=1),
+    title=dict(font=dict(size=18)),
+    showlegend=False
+)
+
+# draw building permit line chart
+col2.plotly_chart(
+    fig_migration, 
+    config=config,
+    theme='streamlit',
+    use_container_width=True
+    )
+
+# Migration KPIs
+with col2:
+   subcol1, subcol2 = st.columns(2)
+
+county_netFlow = df_irs[df_irs['FIPS']==county_fips][migration_switch[migration_variable][0]].sum()
+metro_netFlow = df_irs[df_irs['county_name']=='Metro'][migration_switch[migration_variable][0]].sum()
+
+# subcolumn with the county total net migration
+subcol1.markdown(
+   f"""
+    <div style='margin-top: {KPI_margin_top}px; margin-bottom: {KPI_margin_bottom}px;'>
+        <span style='font-size: {KPI_label_font_size}px; font-weight: 200;'>5-Year <b>County</b> Net Total:</span><br>
+        <span style='font-size: {KPI_value_font_size}px; font-weight: 800;'>{migration_switch[migration_variable][3]}{county_netFlow:,.0f}</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+subcol1.write(" ")
+
+# subcolumn with the Metro total net migration
+subcol2.markdown(
+    f"""
+    <div style='margin-top: {KPI_margin_top}px; margin-bottom: {KPI_margin_bottom}px;'>
+        <span style='font-size: {KPI_label_font_size}px; font-weight: 200;'>5-Year <b>Metro</b> Net Total:</span><br>
+        <span style='font-size: {KPI_value_font_size}px; font-weight: 800;'>{migration_switch[migration_variable][3]}{metro_netFlow:,.0f}</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+subcol2.write(" ")
+
+
+countyInflow_perCapita = df_irs[df_irs['FIPS']==county_fips]['agi_inflow'].sum() / df_irs[df_irs['FIPS']==county_fips]['people_inflow'].sum()
+countyOutflow_perCapita = df_irs[df_irs['FIPS']==county_fips]['agi_outflow'].sum() / df_irs[df_irs['FIPS']==county_fips]['people_outflow'].sum()
+
+# subcolumn with the county AGI / capita inflow
+subcol1.markdown(
+   f"""
+    <div style='margin-top: {KPI_margin_top}px; margin-bottom: {KPI_margin_bottom}px;'>
+        <span style='font-size: {KPI_label_font_size}px; font-weight: 200;'>5-Year County AGI/Capita <b>Inflow</b>:</span><br>
+        <span style='font-size: {KPI_value_font_size}px; font-weight: 800;'>${countyInflow_perCapita:,.0f}</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+# subcolumn with the county AGI / capital outflow
+subcol2.markdown(
+    f"""
+    <div style='margin-top: {KPI_margin_top}px; margin-bottom: {KPI_margin_bottom}px;'>
+        <span style='font-size: {KPI_label_font_size}px; font-weight: 200;'>5-Year County AGI/Capita <b>Outflow</b>:</span><br>
+        <span style='font-size: {KPI_value_font_size}px; font-weight: 800;'>${countyOutflow_perCapita:,.0f}</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+# Migration groupby summary tables ------------------------------------------------
+st.write(" ")
+st.write(" ")
+
+# first, define a metro designation dictionary 
+metro_clarification = {
+    'Shelby County, TN': 'Shelby County, TN (Memphis metro)',
+    'Montgomery County, TN': 'Montgomery County, TN (Clarkesville)',
+    'Cook County, IL': 'Cook County, IL (Chicago metro)',
+    'Knox County, TN': 'Knox County, TN (Knoxville metro)',
+    'Loudon County, TN': 'Loudon County, TN (Knoxville metro)',
+    'New York County, NY': 'New York County, NY (Manhattan)',
+    'Hamilton County, TN': 'Hamilton County, TN (Chattanooga metro)',
+    'Fulton County, GA': 'Fulton County, GA (Atlanta metro)',
+    'Union County, NJ': 'Union County, NJ (NYC metro)',
+    'Monmouth County, NJ': 'Monmouth County, NJ (NYC metro)',
+    'Westchester County, NY': 'Westchester County, NY (NYC metro)',
+    'Hudson County, NJ': 'Hudson County, NJ (NYC metro)',
+    'San Mateo County, CA': 'San Mateo County, CA (Bay Area)',
+    'Santa Clara County, CA': 'Santa Clara County, CA (Bay Area)',
+    'Collier County, FL': 'Collier County, FL (Naples)',
+    'Walton County, FL': 'Walton County, FL (Panhandle)',
+    'Arlington County, VA': 'Arlington County, VA (D.C. metro)',
+    'Morris County, NJ': 'Morris County, NJ (NYC metro)',
+    'Lake County, IL': 'Lake County, IL (Chicago metro)',
+    'Essex County, MA': 'Essex County, MA (Boston metro)',
+    'DuPage County, IL': 'DuPage County, IL (Chicago metro)',
+    'Palm Beach County, FL': 'Palm Beach County, FL (Miami metro)',
+    'Broward County, FL': 'Broward County, FL (Miami metro)',
+    'Albemarle County, VA': 'Albemarle County, VA (Charlottesville)',
+    'Denton County, TX': 'Denton County, TX (Dallas-F.W. metro)',
+    'Essex County, NJ': 'Essex County, NJ (NYC metro)',
+    'King County, WA': 'King County, WA (Seattle metro)',
+    'Moore County, NC': 'Moore County, NC (Pinehurst)',
+    'Harris County, TX': 'Harris County, TX (Houston metro)',
+    'Maricopa County, AZ': 'Maricopa County, AZ (Phoenix metro)',
+    'Orange County, CA': 'Orange County, CA (L.A. metro)',
+    'Jefferson County, AL': 'Jefferson County, AL (Birmingham metro)',
+    'Kings County, NY': 'Kings County, NY (Queens)',
+    'Travis County, TX': 'Travis County, TX (Austin metro)',
+    'Jefferson County, KY': 'Jefferson County, KY (Louisville metro)',
+    'Mecklenburg County, NC': 'Mecklenburg County, NC (Charlotte metro)',
+    'Madison County, TN': 'Madison County, TN (Jackson)',
+    'Orange County, FL': 'Orange County, FL (Orlando metro)',
+    'DeKalb County, GA': 'DeKalb County, GA (Atlanta metro)',
+    'Warren County, KY': 'Warren County, KY (Bowling Green)',
+    'Madison County, AL': 'Madison County, AL (Huntsville metro)',
+    'Hillsborough County, FL': 'Hillsborough County, FL (Tampa metro)',
+    'Franklin County, OH': 'Franklin County, OH (Columbus metro)',
+    'Clark County, NV': 'Clark County, NV (Las Vegas metro)',
+    'Marion County, IN': 'Marion County, IN (Indianapolis metro)',
+}
+
+# inflow table xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+st.markdown(
+    f"""
+    <div style='margin-top: 20px; margin-bottom: 20px;'>
+        <span style='font-size: 18px; font-weight: 700;'>Migration Inflow Summary Table (2018-2022):</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+inflow_County2County = pd.read_csv(
+    'Data/inflow_County2County.csv', 
+    dtype={
+        'origin_FIPS': 'str',
+        'destination_FIPS': 'str'
+    }
+    )
+inflow_County2County = inflow_County2County[inflow_County2County['destination_FIPS']==county_fips]
+
+inflow_summary = inflow_County2County.groupby('origin_county').agg({
+    'people_inflow': 'sum',
+    'agi_inflow': 'sum'
+}).reset_index()
+
+inflow_summary = inflow_summary.rename(columns={
+    'origin_county': 'Origin County',
+    'people_inflow': 'Inflow - People',
+    'agi_inflow': 'Inflow - AGI'    
+})
+
+inflow_summary['AGI / Capita'] = inflow_summary['Inflow - AGI'] / inflow_summary['Inflow - People']
+
+# non-exhaustive mapping of metro clarification names for county names
+inflow_summary['Origin County'] = inflow_summary['Origin County'].map(metro_clarification).fillna(inflow_summary['Origin County'])
+
+inflow_summary = inflow_summary.style.format(
+    {
+        "Inflow - AGI": lambda x: '${:,.0f}'.format(x),
+        "AGI / Capita": lambda x: '${:,.2f}'.format(x)
+    },
+    thousands=','
+)
+
+st.dataframe(
+    inflow_summary, 
+    use_container_width=True, 
+    height=200,
+    )
+
+# outflow table xxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+st.markdown(
+    f"""
+    <div style='margin-top: 20px; margin-bottom: 20px;'>
+        <span style='font-size: 18px; font-weight: 700;'>Migration Outflow Summary Table (2018-2022):</span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+outflow_County2County = pd.read_csv(
+    'Data/outflow_County2County.csv', 
+    dtype={
+        'origin_FIPS': 'str',
+        'destination_FIPS': 'str'
+    }
+    )
+outflow_County2County = outflow_County2County[outflow_County2County['origin_FIPS']==county_fips]
+
+outflow_summary = outflow_County2County.groupby('destination_county').agg({
+    'people_outflow': 'sum',
+    'agi_outflow': 'sum'
+}).reset_index()
+
+outflow_summary = outflow_summary.rename(columns={
+    'destination_county': 'Destination County',
+    'people_outflow': 'Outflow - People',
+    'agi_outflow': 'Outflow - AGI'    
+})
+
+outflow_summary['AGI / Capita'] = outflow_summary['Outflow - AGI'] / outflow_summary['Outflow - People']
+
+# non-exhaustive mapping of metro clarification names for county names
+outflow_summary['Destination County'] = outflow_summary['Destination County'].map(metro_clarification).fillna(outflow_summary['Destination County'])
+
+outflow_summary = outflow_summary.style.format(
+    {
+        "Outflow - AGI": lambda x: '${:,.0f}'.format(x),
+        "AGI / Capita": lambda x: '${:,.2f}'.format(x)
+    },
+    thousands=','
+)
+
+st.dataframe(
+    outflow_summary, 
+    use_container_width=True, 
+    height=200,
+    )
 
 # the custom CSS lives here:
 hide_default_format = """
@@ -420,7 +761,7 @@ hide_default_format = """
                 padding-bottom: 1px;
                 padding-left: 20px;
                 padding-right: 20px;
-                padding-top: 30px;
+                padding-top: 10px;
             }
             .stRadio [role=radiogroup]{
                 align-items: center;
@@ -431,10 +772,11 @@ hide_default_format = """
                 padding-right: 10px;
                 padding-top: 0px;
                 }
-            [data-testid="collapsedControl"] {
-                color: #FFFFFF;
-                background-color: #737373;
-            } 
+            [data-testid="stAppViewBlockContainer"] {
+                padding-top: 23px;
+                padding-left: 23px;
+                }
+
             [class="stDeployButton"] {
                 display: none;
             } 
